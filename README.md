@@ -4,6 +4,10 @@
 
 内置的公式编辑器来自[Formula-Editor](https://github.com/SugarTurboS/Formula-Editor)项目，本项目对其进行封装和修改，使得其适应中文MarkDown写作的需要，并且完全离线。
 
+## Demo
+
+访问GitHub Page使用：[https://xy0797.github.io/MarkDownLaTeXEditer/](https://xy0797.github.io/MarkDownLaTeXEditer/)
+
 ## 使用说明
 
 用`git`克隆本仓库，或者直接下载本仓库的zip，打开`http静态服务器.exe`即可进入网页。
