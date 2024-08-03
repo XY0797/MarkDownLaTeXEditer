@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MarkDown Latex公式编辑器</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #f2f2f2;
+        }
+
+        .section {
+            margin-bottom: 20px;
+            display: flex;
+            flex-wrap: wrap;
+        }
+
+        .button {
+            padding: 10px 20px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            background-color: #4CAF50;
+            color: #fff;
+            border: none;
+            border-radius: 5px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .button:hover {
+            background-color: #45a049;
+        }
+
+        .input-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            margin-bottom: 10px;
+        }
+
+        .input-label {
+            font-size: 24px;
+            margin-bottom: 15px;
+        }
+
+        .input-field {
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            outline: none;
+            font-size: 16px;
+            width: 90%;
+            padding: 5px;
+        }
+
+        iframe {
+            border: none;
+            width: 900px;
+            height: 600px;
+        }
+    </style>
+</head>
+
+<body>
+    <div>公告：MarkDown Latex支持中文和公式混排，自动识别英文公式并且添加$包裹。但是中文句子内请使用中文标点符号，公式内请使用英文标点，否则会影响公式的自动检测。</div>
+    <br>
+    <label for="latexip" class="input-label">MarkDown Latex公式结果：</label>
+    <br>
+    <input type="text" id="latexip" class="input-field" oninput="changeip()" autocomplete="off" />
+    <br>
+    <br>
+    <div id="iframediv"></div>
+    <script>
+        // 初始化
+        function init() {
+            // 监听iframe的通讯
+            window.addEventListener("message", dealMessage, false);
+            // 注入iframe，加载公式编辑器
+            document.getElementById('iframediv').innerHTML = `<iframe id="editIframe" src="./edit/index.html?device=pc&protocol=iframe&width=870"></iframe>`;
+        }
+        // 处理iframe消息
+        function dealMessage(e) {
+            const type = e.data?.type;
+            // console.log(`子框架的${type}消息：`, e.data);
+            switch (type) {
+                case "common.setFormula":
+                    // 用户点击确认钮，显示MarkDown Latex结果
+                    setipvalue(e.data.data.body.formula);
+                    break;
+                default:
+                    break;
+            }
+        }
+        // 发生消息到iframe
+        function postMsg(msg) {
+            document.getElementById("editIframe").contentWindow.postMessage(msg, "*");
+        }
+        // 获取结果框的内容
+        function getipvalue() {
+            // 需要去除$符才能传入公式编辑器，并且需要把\dfrac转为\frac才能正常识别
+            return mdlatex2latex(document.getElementById('latexip').value).replaceAll('\\dfrac', '\\frac');
+        }
+        // 设置结果框的内容
+        function setipvalue(latexstr) {
+            // Latex结果需要添加$号，并且将\frac转为\dfrac，否则Markdown显示的分式会让人难以看清
+            document.getElementById('latexip').value = latex2mdlatex(latexstr).replaceAll('\\frac', '\\dfrac');
+        }
+        // 事件：结果框内容变动
+        function changeip() {
+            // 获取结果框的内容
+            let latexstr = getipvalue();
+            if (latexstr.length == 0) {
+                // 结果框被用户改成空，所以说同步清空公式编辑器
+                postMsg({
+                    type: 'common.clearFormula',
+                    headers: {
+                        reqId: 2
+                    },
+                    data: {
+                        body: {},
+                    }
+                });
+            } else {
+                // 用户输入内容到结果框，同步更改到公式编辑器
+                postMsg({
+                    type: 'common.readFormula',
+                    headers: {
+                        reqId: 1,
+                    },
+                    data: {
+                        body: {
+                            formula: latexstr
+                        }
+                    }
+                });
+            }
+        }
+        // 把markdown Latex里面的 $xxx$ 去除，但是需要特别处理转义
+        function mdlatex2latex(mdstr) {
+            let ret = '';
+            // 记录$构成的区间
+            const intervalarr = [];
+            let l = 0;
+            let backslashcnt = 0;
+            let st = true;// 当前是否在寻找左$
+            for (let i = 0; i < mdstr.length; i++) {
+                const ch = mdstr[i];
+                if (ch == '$') {
+                    if (backslashcnt % 2 == 0) {
+                        // 偶数个转义才行
+                        if (st) {
+                            l = i;
+                            // 开始寻找右$
+                            st = false;
+                        } else {
+                            // 构成一个区间
+                            intervalarr.push([l, i]);
+                            // 重新找左$
+                            st = true;
+                        }
+                    }
+                    backslashcnt = 0;
+                    continue;
+                }
+                if (ch == '\\') {
+                    backslashcnt++;
+                } else {
+                    backslashcnt = 0;
+                }
+            }
+            // 根据区间信息得到处理好的字符串
+            l = 0;
+            for (let e of intervalarr) {
+                // l到左$的前一个字符
+                ret += mdstr.slice(l, e[0]);
+                // 两$内的字符
+                ret += mdstr.slice(e[0] + 1, e[1]);
+                // 更新l
+                l = e[1] + 1;
+            }
+            // 最后一段
+            ret += mdstr.slice(l);
+            // console.log(ret);
+            return ret;
+        }
+        // 为Latex内的英文区段添加$包裹
+        function latex2mdlatex(lastr) {
+            let ret = '';
+            // 记录英文区段
+            const intervalarr = [];
+            let l = 0;
+            let st = true;// 当前是否在寻找l
+            for (let i = 0; i < lastr.length; i++) {
+                const chi = lastr.charCodeAt(i);
+                if (st) {
+                    // 寻找左端点
+                    if (chi < 128) {
+                        // 找到了
+                        l = i;
+                        st = false;
+                    }
+                } else {
+                    // 寻找右端点
+                    if (chi >= 128) {
+                        // 找到了
+                        intervalarr.push([l, i - 1]);
+                        st = true;
+                    }
+                }
+            }
+            if (!st) {
+                // 结束区间
+                intervalarr.push([l, lastr.length - 1]);
+            }
+            // 完成区间内公式的$符包裹
+            l = 0;
+            for (let e of intervalarr) {
+                // l到左端点的前一个字符
+                ret += lastr.slice(l, e[0]);
+                // 区间内的字符
+                ret += '$' + lastr.slice(e[0], e[1] + 1) + '$';
+                // 更新l
+                l = e[1] + 1;
+            }
+            // 最后一段
+            ret += lastr.slice(l);
+            // console.log(ret);
+            return ret;
+        }
+        // 执行初始化函数
+        init();
+    </script>
+</body>
+
+</html>
